@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>River Rats Poker Tournaments</title>
+<!-- CrazyGames SDK v3 (Beast Kid Full Launch build).
+     Guarded: the game runs standalone when the SDK is unavailable. -->
+<script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
 <style>
 :root{
   --cw: clamp(56px, 14.5vw, 78px);          /* community card width */
@@ -871,6 +874,7 @@ function copyRefLink(){
 function handLive(){return !!(MODE&&G&&!G.done&&G.street!=='idle');}
 /* leaving the table: cash stacks are bank chips, so deposit the hero's stack back */
 function leaveToLobby(){
+  CG.gameplayStop();
   if(MODE==='cash'&&G){
     const p=G.players[0],s=p.stack;
     if(s>0){p.stack=0;addBank(s);
@@ -1200,6 +1204,7 @@ function startMode(mode){
       +' Blinds 50/100, never rise. Rebuy anytime you bust. Play money only.</span>');
   updateBlindUI();render();
   tableTalkGreet();
+  CG.gameplayStart();
 }
 
 /* ---------------- hand lifecycle ---------------- */
@@ -1634,8 +1639,8 @@ function setupHeroButtons(){
     else heroDone({type:'raise',to:target,isBet:G.toCall<=0});};
   $('soundBtn').onclick=()=>{muted=!muted;$('soundBtn').textContent=muted?'🔇':'🔊';};
   $('rebuyBtn').onclick=()=>{if(!G||G.players[0].stack>0||MODE!=='cash')return;SFX.click();heroRefill();};
-  $('cashBtn').onclick=()=>{SFX.click();startMode('cash');};
-  $('sngBtn').onclick=()=>{SFX.click();startMode('sng');};
+  $('cashBtn').onclick=()=>{SFX.click();CG.midgame();startMode('cash');};
+  $('sngBtn').onclick=()=>{SFX.click();CG.midgame();startMode('sng');};
   $('bankRefillBtn').onclick=()=>{SFX.click();bankRefill();showLobby();};
   $('profileBtnLobby').onclick=()=>{SFX.click();openProfile();};
   $('profileSave').onclick=()=>{SFX.click();applyProfile();};
@@ -1643,10 +1648,14 @@ function setupHeroButtons(){
   // STORE-REMOVED 2026-09-26 for CrazyGames QA; restore for Beast Kid website launch
   $('storeClose').onclick=()=>{SFX.click();closeStore();};
   $('adBtnStore').onclick=soonAd;
-  $('adBtnBust').onclick=soonAd;
+  $('adBtnBust').onclick=()=>{SFX.click();
+    if(!CG.rewarded(()=>{addBank(5000);hideBust();SFX.chips();
+      log('<span class="h">\uD83C\uDFAC Thanks for watching - 5,000 chips added to your bank.</span>');
+      if(MODE==='cash'&&G&&G.players[0].stack<=0)heroRefill();else if(MODE)render();}))
+      soonAd();};
   $('freeRefillBtn').onclick=()=>{SFX.click();bankRefill();};
   $('bustLater').onclick=()=>{SFX.click();hideBust();};
-  $('againBtn').onclick=()=>{SFX.click();startMode('sng');};
+  $('againBtn').onclick=()=>{SFX.click();CG.midgame();startMode('sng');};
   $('lobbyBtn').onclick=()=>{SFX.click();leaveToLobby();};
   $('menuBtn').onclick=()=>{SFX.click();leaveToLobby();};
   $('lobbyHdrBtn').onclick=()=>{SFX.click();
@@ -1660,7 +1669,7 @@ function setupHeroButtons(){
   $('shareBtnLobby').onclick=()=>{SFX.click();shareGame();};
   $('shareBtnHdr').onclick=()=>{SFX.click();shareGame();};
   $('refCopyBtn').onclick=()=>{SFX.click();copyRefLink();};
-  $('newSngBtn').onclick=()=>{SFX.click();startMode('sng');};
+  $('newSngBtn').onclick=()=>{SFX.click();CG.midgame();startMode('sng');};
 }
 
 /* ---------------- AI ---------------- */
@@ -1873,8 +1882,62 @@ async function gameLoop(){
   }
 }
 
+
+/* ---------------- CrazyGames SDK v3 integration (guarded; standalone-safe) ---------------- */
+window.CG={
+  sdk:null,ready:false,_am:false,
+  async init(){
+    try{
+      if(!window.CrazyGames||!window.CrazyGames.SDK)return false;
+      var done=false;
+      await Promise.race([
+        window.CrazyGames.SDK.init().then(function(){done=true;},function(){}),
+        new Promise(function(res){setTimeout(res,10000);})
+      ]);
+      if(!done)return false;
+      this.sdk=window.CrazyGames.SDK;this.ready=true;
+      try{this.sdk.game.loadingStart();}catch(e){}
+      return true;
+    }catch(e){return false;}
+  },
+  loadingDone(){try{if(this.ready)this.sdk.game.loadingStop();}catch(e){}},
+  gameplayStart(){try{if(this.ready)this.sdk.game.gameplayStart();}catch(e){}},
+  gameplayStop(){try{if(this.ready)this.sdk.game.gameplayStop();}catch(e){}},
+  _mute(){try{if(!muted){this._am=true;muted=true;var b=$('soundBtn');if(b)b.textContent='\uD83D\uDD07';}}catch(e){}},
+  _unmute(){try{if(this._am){this._am=false;muted=false;var b=$('soundBtn');if(b)b.textContent='\uD83D\uDD0A';}}catch(e){}},
+  /* Interstitial at natural breaks (game start, tournament complete). Never mid-hand. */
+  midgame(){
+    var self=this;
+    try{
+      if(!this.ready)return false;
+      try{this.sdk.game.gameplayStop();}catch(e){}
+      this.sdk.ad.requestAd('midgame',{
+        adStarted:function(){self._mute();},
+        adFinished:function(){self._unmute();},
+        adError:function(err){self._unmute();}
+      });
+      return true;
+    }catch(e){return false;}
+  },
+  /* Rewarded ad. The reward is granted ONLY on adFinished - never on adError/dismiss. */
+  rewarded(onReward){
+    var self=this;
+    try{
+      if(!this.ready)return false;
+      this.sdk.ad.requestAd('rewarded',{
+        adStarted:function(){self._mute();},
+        adFinished:function(){self._unmute();try{onReward();}catch(e){}},
+        adError:function(err){self._unmute();
+          banner('Ads unavailable','Rewarded ads are not available right now - the free refill still works.');}
+      });
+      return true;
+    }catch(e){return false;}
+  }
+};
+
 /* ---------------- boot ---------------- */
-window.addEventListener('load',()=>{
+window.addEventListener('load',async ()=>{
+  await CG.init();
   window.__holdem={eval5,eval7,bestScore,cmpScore,handName,newDeck,chenScore,madeStrength,draws,buildPots,awardPots,aiDecide,startMode,
     get G(){return G;},get MODE(){return MODE;},ordinal,
     sngState(){return G?{mode:MODE,sngDone:G.sngDone,handNo,
@@ -1893,6 +1956,8 @@ window.addEventListener('load',()=>{
   checkReferral();
   renderRefBox();
   gameLoop();
+  CG.loadingDone();
+  if(CG.ready){var _ab=$('adBtnBust');if(_ab){_ab.style.display='block';var _ad=_ab.querySelector('.desc');if(_ad)_ad.textContent='Rewarded video';}}
 });
 </script>
 </body>
