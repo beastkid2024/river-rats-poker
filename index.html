@@ -588,6 +588,7 @@ footer{padding:14px;color:#5c5648;font-size:11px;letter-spacing:1px;text-align:c
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const RANKS = '23456789TJQKA';
+const RANKD = r => r===8 ? '10' : RANKS[r];   // display label: Ten shows as "10" (logic still uses 'T')
 const SUITS = ['♠','♥','♦','♣'];
 const SUIT_CLS = ['','red','blue','green']; // 4-color deck: spades black, hearts red, diamonds blue, clubs green
 
@@ -632,7 +633,7 @@ function newDeck(){
   for(let i=d.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[d[i],d[j]]=[d[j],d[i]];}
   return d;
 }
-const cardStr = c => RANKS[c.r]+SUITS[c.s];
+const cardStr = c => RANKD(c.r)+SUITS[c.s];
 
 // score a 5-card hand -> [category, tiebreak...] (lexicographic compare)
 function eval5(cs){
@@ -709,7 +710,7 @@ function handName(cards){ // cards: 5..7
 }
 function describeHole(hole){
   const [a,b]=hole, hi=Math.max(a.r,b.r), lo=Math.min(a.r,b.r);
-  const rn=r=>r===12?'Ace':r===11?'King':r===10?'Queen':r===9?'Jack':RANKS[r];
+  const rn=r=>r===12?'Ace':r===11?'King':r===10?'Queen':r===9?'Jack':r===8?'10':RANKS[r];
   if(a.r===b.r) return 'Pocket '+rn(a.r)+'s';
   const suf=a.s===b.s?'suited':'offsuit';
   return rn(hi)+' '+rn(lo)+' '+suf;
@@ -1734,8 +1735,8 @@ function cardEl(c,deal,dx,dy){
   const d=document.createElement('div');
   d.className='card '+SUIT_CLS[c.s]+(deal?' deal':'');
   if(deal){d.style.setProperty('--dx',dx||'0px');d.style.setProperty('--dy',dy||'0px');}
-  d.innerHTML='<div class="corner">'+RANKS[c.r]+'<br>'+SUITS[c.s]+'</div><div class="rank">'+RANKS[c.r]+
-    '</div><div class="suit">'+SUITS[c.s]+'</div><div class="corner br">'+RANKS[c.r]+'<br>'+SUITS[c.s]+'</div>';
+  d.innerHTML='<div class="corner">'+RANKD(c.r)+'<br>'+SUITS[c.s]+'</div><div class="rank">'+RANKD(c.r)+
+    '</div><div class="suit">'+SUITS[c.s]+'</div><div class="corner br">'+RANKD(c.r)+'<br>'+SUITS[c.s]+'</div>';
   return d;
 }
 function cardBackEl(deal,dx,dy){
